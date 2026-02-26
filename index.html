@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- PWA / App-Modus für iPad -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="JuSchG App">
+    
+    <title>Jugendschutzgesetz - Interaktive Fallprüfung (Klasse 10)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+            color: #0f172a;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* --- Modern Interactive Table (Traffic Light) --- */
+        .traffic-light {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .traffic-light:active {
+            transform: scale(0.92);
+            box-shadow: none;
+        }
+        .state-neutral { background-color: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+        .state-red { background-color: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
+        .state-green { background-color: #dcfce7; color: #166534; border: 2px solid #22c55e; }
+        .state-yellow { background-color: #fef9c3; color: #854d0e; border: 2px solid #eab308; }
+
+        /* Animation für falsche Antworten beim Lösungs-Check */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            75% { transform: translateX(6px); }
+        }
+        .animate-shake {
+            animation: shake 0.3s ease-in-out;
+        }
+
+        /* --- Term Matching (iPad Optimized) --- */
+        .term-item {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        .term-item.selected {
+            transform: scale(1.05) translateY(-2px);
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+            color: #1d4ed8;
+            animation: pulse-ring 1.5s infinite;
+        }
+        .drop-zone {
+            min-height: 70px;
+            transition: all 0.2s ease;
+        }
+        .drop-zone.highlight {
+            background-color: #f0fdf4;
+            border-color: #22c55e;
+            border-style: solid;
+            transform: scale(1.02);
+        }
+
+        /* --- iPad Eingabefelder Optimierung --- */
+        textarea, input[type="radio"] {
+            appearance: none; 
+            -webkit-appearance: none;
+        }
+        .quiz-radio {
+            width: 1.25rem;
+            height: 1.25rem;
+            border: 2px solid #cbd5e1;
+            border-radius: 50%;
+            outline: none;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .quiz-radio:checked {
+            border-color: #2563eb;
+            background-color: white;
+        }
+        .quiz-radio:checked::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 0.625rem;
+            height: 0.625rem;
+            background-color: #2563eb;
+            border-radius: 50%;
+        }
+
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+        /* --- Print Styles --- */
+        @media print {
+            body * { visibility: hidden; }
+            #print-container, #print-container * { visibility: visible; }
+            #print-container { position: absolute; left: 0; top: 0; width: 100%; background: white; padding: 0; }
+            .page-break { page-break-before: always; }
+            .no-print { display: none !important; }
+            @page { size: A4; margin: 2cm; }
+        }
+    </style>
+</head>
+<body class="pb-32">
+
+    <!-- Print Container -->
+    <div id="print-container" class="hidden absolute top-0 left-0 w-full bg-white z-50 prose max-w-none text-black"></div>
+
+    <!-- Main Content -->
+    <main class="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 no-print">
+        
+        <!-- Header Image -->
+        <div class="w-full h-56 md:h-72 rounded-3xl overflow-hidden mb-10 shadow-xl relative bg-slate-900 flex items-center justify-center">
+            <img src="https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=2000" alt="Gesetzestexte" class="w-full h-full object-cover opacity-50 absolute inset-0 mix-blend-overlay">
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent flex items-end p-6 md:p-10">
+                <div class="z-10 relative">
+                    <span class="bg-blue-500/20 backdrop-blur-md border border-blue-400/30 text-blue-100 text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider mb-4 inline-block shadow-sm">Klasse 10 | Modul Recht</span>
+                    <h1 class="text-3xl md:text-5xl font-bold text-white mb-3 tracking-tight">Das Jugendschutzgesetz</h1>
+                    <p class="text-blue-100 font-medium text-lg md:text-xl max-w-2xl">Präventives Wächteramt und Schutzpflichten in der Lebensrealität</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section: Intro -->
+        <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-10 mb-8">
+            <h2 class="text-2xl font-bold text-slate-800 mb-5 flex items-center"><span class="bg-blue-100 text-blue-600 w-10 h-10 rounded-xl flex items-center justify-center mr-4"><i class="fa-solid fa-scale-balanced"></i></span>Worum geht es hier?</h2>
+            <div class="prose max-w-none text-slate-600 text-base md:text-lg leading-relaxed space-y-4">
+                <p>Das Jugendschutzgesetz (JuSchG) soll Kinder und Jugendliche vor Gefährdungen in der Öffentlichkeit schützen. Wichtig: Es dient <strong>nicht</strong> dazu, euch zu bestrafen! Es richtet sich an Gewerbetreibende (z.B. Kinobetreiber, Supermärkte, Gastwirte) – sie sind die sogenannten <strong>Normadressaten</strong>.</p>
+                <p>Wenn ein Geschäft gegen diese Regeln verstößt, drohen den Betreibern hohe Bußgelder. In den folgenden Fällen überprüfen wir, wie das Gesetz im echten Leben angewendet wird.</p>
+            </div>
+        </section>
+
+        <!-- Section: Begriffsdefinitionen -->
+        <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-10 mb-8">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                <h2 class="text-2xl font-bold text-slate-800 flex items-center"><span class="bg-blue-100 text-blue-600 w-10 h-10 rounded-xl flex items-center justify-center mr-4"><i class="fa-solid fa-puzzle-piece"></i></span>Die wichtigsten Begriffe</h2>
+                <span class="text-sm font-semibold bg-blue-50 text-blue-600 border border-blue-200 py-2 px-4 rounded-full flex items-center shadow-sm"><i class="fa-regular fa-hand-pointer mr-2 text-lg animate-bounce"></i>Auf dem iPad antippen zum Zuweisen</span>
+            </div>
+            
+            <div class="flex flex-wrap gap-3 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100" id="term-container">
+                <div class="term-item bg-white border-2 border-slate-200 rounded-xl py-3 px-5 font-semibold text-slate-700 text-center flex-grow sm:flex-grow-0" data-term="Personensorgeberechtigter">Personensorgeberechtigter</div>
+                <div class="term-item bg-white border-2 border-slate-200 rounded-xl py-3 px-5 font-semibold text-slate-700 text-center flex-grow sm:flex-grow-0" data-term="Erziehungsbeauftragter">Erziehungsbeauftragter</div>
+                <div class="term-item bg-white border-2 border-slate-200 rounded-xl py-3 px-5 font-semibold text-slate-700 text-center flex-grow sm:flex-grow-0" data-term="Bildträger">Bildträger (USK/FSK)</div>
+                <div class="term-item bg-white border-2 border-slate-200 rounded-xl py-3 px-5 font-semibold text-slate-700 text-center flex-grow sm:flex-grow-0" data-term="Kind">Kind (i.S.d. JuSchG)</div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col hover:border-blue-300 transition-colors">
+                    <p class="text-slate-600 mb-4 flex-grow text-base">Jede Person über 18 Jahren, die aufgrund einer Vereinbarung mit den Eltern für diesen Abend Erziehungsaufgaben wahrnimmt (oft "Muttizettel" genannt).</p>
+                    <div class="drop-zone border-2 border-dashed border-slate-300 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 font-medium" data-target="Erziehungsbeauftragter">Hier ablegen</div>
+                </div>
+                <div class="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col hover:border-blue-300 transition-colors">
+                    <p class="text-slate-600 mb-4 flex-grow text-base">Wem allein oder gemeinsam mit einer anderen Person die Personensorge gesetzlich zusteht (in der Regel sind das die Eltern).</p>
+                    <div class="drop-zone border-2 border-dashed border-slate-300 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 font-medium" data-target="Personensorgeberechtigter">Hier ablegen</div>
+                </div>
+                <div class="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col hover:border-blue-300 transition-colors">
+                    <p class="text-slate-600 mb-4 flex-grow text-base">Personen, die noch nicht 14 Jahre alt sind. Sie unterliegen dem strengsten Schutzmechanismus im Gesetz.</p>
+                    <div class="drop-zone border-2 border-dashed border-slate-300 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 font-medium" data-target="Kind">Hier ablegen</div>
+                </div>
+                <div class="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col hover:border-blue-300 transition-colors">
+                    <p class="text-slate-600 mb-4 flex-grow text-base">Physische Speichermedien (wie DVDs, Blu-rays, Konsolen-Spiele auf CD/Cartridge), die Filme oder Videospiele enthalten.</p>
+                    <div class="drop-zone border-2 border-dashed border-slate-300 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 font-medium" data-target="Bildträger">Hier ablegen</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section: Gesetzestexte -->
+        <section class="bg-slate-800 rounded-3xl shadow-lg border border-slate-700 p-6 md:p-10 mb-8 text-white">
+            <h2 class="text-2xl font-bold mb-6 flex items-center"><span class="bg-slate-700 text-blue-400 w-10 h-10 rounded-xl flex items-center justify-center mr-4"><i class="fa-solid fa-book-bookmark"></i></span>Gesetzes-Recherche</h2>
+            
+            <div class="space-y-4">
+                <details class="group bg-slate-700/50 rounded-2xl overflow-hidden border border-slate-600/50 open:bg-slate-700 transition-all">
+                    <summary class="flex justify-between items-center font-medium cursor-pointer list-none p-5 hover:bg-slate-600/50 transition-colors text-lg">
+                        <span class="flex items-center"><i class="fa-solid fa-utensils w-6 text-slate-400 mr-3"></i> § 4 Gaststätten</span>
+                        <span class="transition group-open:rotate-180 bg-slate-800 w-8 h-8 rounded-full flex items-center justify-center"><i class="fa-solid fa-chevron-down text-slate-400 text-sm"></i></span>
+                    </summary>
+                    <div class="text-slate-300 text-base leading-relaxed p-6 bg-slate-800/80 border-t border-slate-600/50">
+                        (1) Der Aufenthalt in Gaststätten darf Kindern und Jugendlichen unter 16 Jahren nur gestattet werden, wenn eine personensorgeberechtigte oder erziehungsbeauftragte Person sie begleitet oder wenn sie in der Zeit zwischen 5 Uhr und 23 Uhr eine Mahlzeit oder ein Getränk einnehmen.<br><br>
+                        (2) Jugendlichen ab 16 Jahren darf der Aufenthalt in Gaststätten ohne Begleitung einer personensorgeberechtigten oder erziehungsbeauftragten Person in der Zeit von 24 Uhr und 5 Uhr morgens nicht gestattet werden.
+                    </div>
+                </details>
+
+                <details class="group bg-slate-700/50 rounded-2xl overflow-hidden border border-slate-600/50 open:bg-slate-700 transition-all">
+                    <summary class="flex justify-between items-center font-medium cursor-pointer list-none p-5 hover:bg-slate-600/50 transition-colors text-lg">
+                        <span class="flex items-center"><i class="fa-solid fa-music w-6 text-slate-400 mr-3"></i> § 5 Tanzveranstaltungen (Clubs)</span>
+                        <span class="transition group-open:rotate-180 bg-slate-800 w-8 h-8 rounded-full flex items-center justify-center"><i class="fa-solid fa-chevron-down text-slate-400 text-sm"></i></span>
+                    </summary>
+                    <div class="text-slate-300 text-base leading-relaxed p-6 bg-slate-800/80 border-t border-slate-600/50">
+                        (1) Die Anwesenheit bei öffentlichen Tanzveranstaltungen darf Kindern und Jugendlichen unter 16 Jahren nicht und Jugendlichen ab 16 Jahren längstens bis 24 Uhr gestattet werden. Ausnahme: Begleitung durch Erziehungsbeauftragte.<br><br>
+                        (2) Ausnahme: Anwesenheit für Kinder bis 22 Uhr und Jugendliche unter 16 bis 24 Uhr gestattet, wenn die Veranstaltung von einem anerkannten Träger der Jugendhilfe durchgeführt wird (z.B. Jugendzentrum, Vereine).
+                    </div>
+                </details>
+                
+                <details class="group bg-slate-700/50 rounded-2xl overflow-hidden border border-slate-600/50 open:bg-slate-700 transition-all">
+                    <summary class="flex justify-between items-center font-medium cursor-pointer list-none p-5 hover:bg-slate-600/50 transition-colors text-lg">
+                        <span class="flex items-center"><i class="fa-solid fa-dice w-6 text-slate-400 mr-3"></i> § 6 Spielhallen</span>
+                        <span class="transition group-open:rotate-180 bg-slate-800 w-8 h-8 rounded-full flex items-center justify-center"><i class="fa-solid fa-chevron-down text-slate-400 text-sm"></i></span>
+                    </summary>
+                    <div class="text-slate-300 text-base leading-relaxed p-6 bg-slate-800/80 border-t border-slate-600/50">
+                        (1) Die Anwesenheit in öffentlichen Spielhallen oder ähnlichen vorwiegend dem Spielbetrieb dienenden Räumen darf Kindern und Jugendlichen (also allen unter 18 Jahren) nicht gestattet werden.
+                    </div>
+                </details>
+
+                <details class="group bg-slate-700/50 rounded-2xl overflow-hidden border border-slate-600/50 open:bg-slate-700 transition-all">
+                    <summary class="flex justify-between items-center font-medium cursor-pointer list-none p-5 hover:bg-slate-600/50 transition-colors text-lg">
+                        <span class="flex items-center"><i class="fa-solid fa-gamepad w-6 text-slate-400 mr-3"></i> § 11 & § 12 Filme & Videospiele</span>
+                        <span class="transition group-open:rotate-180 bg-slate-800 w-8 h-8 rounded-full flex items-center justify-center"><i class="fa-solid fa-chevron-down text-slate-400 text-sm"></i></span>
+                    </summary>
+                    <div class="text-slate-300 text-base leading-relaxed p-6 bg-slate-800/80 border-t border-slate-600/50">
+                        <strong>Kino (§ 11):</strong> Kinder/Jugendliche dürfen nur Filme sehen, die für ihr Alter freigegeben sind (FSK). Zudem gelten Zeitgrenzen ohne Begleitung: Unter 14 bis 20 Uhr, unter 16 bis 22 Uhr, unter 18 bis 24 Uhr.<br><br>
+                        <strong>Bildträger (§ 12):</strong> Videospiele und Filme auf Datenträgern dürfen in der Öffentlichkeit (Verkauf/Verleih) nur zugänglich gemacht werden, wenn diese für die Altersstufe freigegeben sind (USK/FSK).
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <!-- Section: Ampel-Matrix -->
+        <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-10 mb-8 overflow-hidden">
+            <h2 class="text-2xl font-bold text-slate-800 mb-4 flex items-center"><span class="bg-blue-100 text-blue-600 w-10 h-10 rounded-xl flex items-center justify-center mr-4"><i class="fa-solid fa-table-cells"></i></span>Gesetzes-Matrix</h2>
+            <div class="flex flex-wrap items-center gap-4 text-slate-600 mb-6 text-sm bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <span class="flex items-center"><span class="w-4 h-4 rounded-full bg-red-200 border-2 border-red-500 mr-2 shadow-sm"></span> Verboten</span>
+                <span class="flex items-center"><span class="w-4 h-4 rounded-full bg-green-200 border-2 border-green-500 mr-2 shadow-sm"></span> Erlaubt</span>
+                <span class="flex items-center"><span class="w-4 h-4 rounded-full bg-yellow-200 border-2 border-yellow-500 mr-2 shadow-sm"></span> Bedingt (z.B. Uhrzeit/Begleitung)</span>
+            </div>
+
+            <div class="overflow-x-auto -mx-6 px-6 md:mx-0 md:px-0" style="-webkit-overflow-scrolling: touch;">
+                <table class="w-full text-left border-collapse min-w-[700px]">
+                    <thead>
+                        <tr class="bg-slate-100/50 text-slate-700 text-sm font-semibold border-b-2 border-slate-200">
+                            <th class="p-4 w-2/5">Situation / Aufenthaltsort</th>
+                            <th class="p-4 text-center">Unter 14 Jahre</th>
+                            <th class="p-4 text-center">14 bis 15 Jahre</th>
+                            <th class="p-4 text-center">16 bis 17 Jahre</th>
+                        </tr>
+                    </thead>
+                    <tbody id="matrix-body" class="divide-y divide-slate-100">
+                        <!-- Rows generated via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- NEU: Lösungs-Check Bereich -->
+            <div class="mt-8 flex flex-col md:flex-row items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <button id="checkMatrixBtn" class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-semibold py-3 px-6 rounded-xl shadow-md transition-all flex items-center justify-center w-full md:w-auto mb-3 md:mb-0">
+                    <i class="fa-solid fa-check-double mr-2"></i> Matrix überprüfen
+                </button>
+                <div id="matrixFeedback" class="text-base font-medium px-4 text-center">
+                    <span class="text-slate-500">Tippe auf den Button, um deine Eingaben zu testen.</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section: Fallstudien -->
+        <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-10 mb-8">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 flex items-center"><span class="bg-blue-100 text-blue-600 w-10 h-10 rounded-xl flex items-center justify-center mr-4"><i class="fa-solid fa-gavel"></i></span>Fälle aus dem Alltag</h2>
+            <p class="text-slate-600 text-base mb-8 bg-blue-50/50 p-4 rounded-xl border border-blue-100">Lies dir die kurzen Fälle durch, nutze die Paragrafen von oben und notiere deine Einschätzung.</p>
+
+            <div class="space-y-10" id="cases-container">
+                <!-- Case 1 -->
+                <div class="case-block">
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Fall 1: Der Trick im Elektromarkt</h3>
+                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 mb-4 text-slate-700 text-base leading-relaxed shadow-inner">
+                        Max (15) und sein Bruder Hans (18) sind im Elektromarkt. Max möchte einen Ego-Shooter (USK ab 18). Der Verkäufer verweigert den Verkauf an Max. Vor den Augen des Verkäufers gibt Max Hans das Geld. Hans kauft das Spiel und gibt es Max sofort im Laden.
+                    </div>
+                    <textarea class="w-full h-32 p-5 text-base leading-relaxed bg-white border-2 border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all resize-y save-trigger shadow-sm" data-id="fall1" placeholder="Wer hat hier das Gesetz gebrochen? Max, Hans oder der Verkäufer? Begründe kurz."></textarea>
+                </div>
+
+                <!-- Case 2 -->
+                <div class="case-block">
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Fall 2: Pizza nach dem Training</h3>
+                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 mb-4 text-slate-700 text-base leading-relaxed shadow-inner">
+                        Felix (14) und Tom (15) gehen nach dem Fußballtraining donnerstags um 21:30 Uhr in eine Pizzeria. Sie bestellen Pizza. Um 23:15 Uhr sitzen sie immer noch dort. Der Wirt lässt sie gewähren.
+                    </div>
+                    <textarea class="w-full h-32 p-5 text-base leading-relaxed bg-white border-2 border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all resize-y save-trigger shadow-sm" data-id="fall2" placeholder="Dürfen die beiden um diese Uhrzeit noch in der Pizzeria sitzen?"></textarea>
+                </div>
+
+                <!-- Case 3 -->
+                <div class="case-block">
+                    <h3 class="text-xl font-bold text-slate-800 mb-3">Fall 3: Die Disconacht</h3>
+                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 mb-4 text-slate-700 text-base leading-relaxed shadow-inner">
+                        Sarah (16) geht samstags mit 18-jährigen Freundinnen in den Club "Nachtflug". Sie hat keinen Erziehungsbeauftragten ("Muttizettel") dabei. Um 01:30 Uhr gibt es eine Polizeikontrolle.
+                    </div>
+                    <textarea class="w-full h-32 p-5 text-base leading-relaxed bg-white border-2 border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all resize-y save-trigger shadow-sm" data-id="fall3" placeholder="Was passiert bei der Kontrolle? Bekommt Sarah eine Strafe oder der Club-Betreiber?"></textarea>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section: Multiple Choice Quiz -->
+        <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 md:p-10 mb-8">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6 flex items-center"><span class="bg-blue-100 text-blue-600 w-10 h-10 rounded-xl flex items-center justify-center mr-4"><i class="fa-solid fa-list-check"></i></span>Wissens-Check</h2>
+            
+            <div class="space-y-8" id="quiz-container">
+                <div class="quiz-item" data-id="q1">
+                    <p class="font-semibold text-slate-800 text-lg mb-4">1. Gilt das Jugendschutzgesetz eigentlich auch bei einem privaten Filmabend (mit Filmen ab 18) zu Hause bei einem 15-Jährigen ohne Eltern?</p>
+                    <div class="space-y-3">
+                        <label class="flex items-start space-x-4 p-4 border-2 border-slate-100 rounded-2xl cursor-pointer hover:bg-slate-50 hover:border-blue-200 transition-all quiz-label shadow-sm">
+                            <input type="radio" name="q2" value="A" class="mt-1 quiz-radio save-trigger flex-shrink-0">
+                            <span class="text-slate-700 text-base pt-0.5">Nein, das Gesetz greift primär im öffentlichen Raum und Geschäftsverkehr, nicht im heimischen Wohnzimmer.</span>
+                        </label>
+                        <label class="flex items-start space-x-4 p-4 border-2 border-slate-100 rounded-2xl cursor-pointer hover:bg-slate-50 hover:border-blue-200 transition-all quiz-label shadow-sm">
+                            <input type="radio" name="q2" value="B" class="mt-1 quiz-radio save-trigger flex-shrink-0">
+                            <span class="text-slate-700 text-base pt-0.5">Ja, das Gesetz gilt strengstens überall. Die Polizei darf deshalb auch private Wohnungen kontrollieren.</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- NEU: Reset Button für Leih-iPads -->
+        <div class="text-center mt-12 mb-20 no-print">
+            <button onclick="if(confirm('Möchtest du wirklich alle Eingaben auf diesem Gerät löschen?')) { localStorage.clear(); location.reload(); }" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 py-2 px-6 rounded-full text-sm font-semibold transition-colors">
+                <i class="fa-solid fa-trash-can mr-2"></i> Für den nächsten Schüler zurücksetzen
+            </button>
+        </div>
+
+    </main>
+
+    <!-- Sticky PDF Export Button -->
+    <div class="fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-xl border-t border-slate-200 p-4 pb-safe flex justify-center shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] no-print z-40">
+        <button id="generatePdfBtn" class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-lg py-4 px-10 rounded-2xl shadow-lg shadow-blue-500/30 transition-all transform hover:-translate-y-1 active:scale-95 flex items-center w-full max-w-md justify-center">
+            <i class="fa-solid fa-file-pdf mr-3 text-xl"></i>
+            Als PDF exportieren
+        </button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- 1. LOCAL STORAGE ---
+            const STORAGE_KEY = 'juschg_student_data_v4';
+            let appData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
+                terms: {}, matrix: {}, cases: {}, quiz: {}
+            };
+
+            const saveData = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+
+            // --- 2. MATRIX GENERATION ---
+            const matrixRows =[
+                { id: "m_gast", label: "§ 4 Aufenthalt in Gaststätten" },
+                { id: "m_disco", label: "§ 5 Tanzveranstaltungen (Club)" },
+                { id: "m_brauchtum", label: "§ 5 Träger der Jugendhilfe / Verein" },
+                { id: "m_spiel", label: "§ 6 Spielhallen" },
+                { id: "m_kino", label: "§ 11 Kino (FSK beachten)" },
+                { id: "m_medien", label: "§ 12 Spiele/Filme kaufen (USK)" }
+            ];
+
+            const states =['state-neutral', 'state-green', 'state-yellow', 'state-red'];
+            const stateLabels = { 'state-neutral': 'Tippen', 'state-green': 'Erlaubt', 'state-yellow': 'Bedingt', 'state-red': 'Verboten' };
+            const matrixBody = document.getElementById('matrix-body');
+
+            matrixRows.forEach((row) => {
+                const tr = document.createElement('tr');
+                let cellsHtml = `<td class="p-4 text-slate-800 text-base font-medium">${row.label}</td>`;
+                
+                ['u14', 'u16', 'u18'].forEach(ageGroup => {
+                    const cellId = `${row.id}_${ageGroup}`;
+                    const savedState = appData.matrix[cellId] || 0;
+                    cellsHtml += `
+                        <td class="p-2 text-center border-l border-slate-100">
+                            <div class="traffic-light w-full max-w-[120px] mx-auto h-12 rounded-full flex items-center justify-center font-bold text-sm tracking-wide ${states[savedState]}" 
+                                 data-id="${cellId}" data-state="${savedState}">
+                                 ${stateLabels[states[savedState]]}
+                            </div>
+                        </td>`;
+                });
+                
+                tr.innerHTML = cellsHtml;
+                matrixBody.appendChild(tr);
+            });
+
+            // Matrix Click Handler
+            document.querySelectorAll('.traffic-light').forEach(el => {
+                el.addEventListener('pointerdown', function(e) {
+                    e.preventDefault();
+                    let currentState = parseInt(this.getAttribute('data-state'));
+                    let nextState = (currentState + 1) % states.length;
+                    
+                    this.classList.remove(...states, 'ring-4', 'ring-red-400', 'ring-green-400'); // Reset borders
+                    this.classList.add(states[nextState]);
+                    this.setAttribute('data-state', nextState);
+                    this.innerText = stateLabels[states[nextState]];
+                    
+                    appData.matrix[this.getAttribute('data-id')] = nextState;
+                    saveData();
+                });
+            });
+
+            // --- NEU: MATRIX LÖSUNGS-CHECK ---
+            // Lösungs-Key: 1=Grün, 2=Gelb, 3=Rot
+            const correctMatrixAnswers = {
+                'm_gast_u14': 2, 'm_gast_u16': 2, 'm_gast_u18': 2, 
+                'm_disco_u14': 3, 'm_disco_u16': 3, 'm_disco_u18': 2, 
+                'm_brauchtum_u14': 2, 'm_brauchtum_u16': 2, 'm_brauchtum_u18': 1, // ab 16 bei Vereinen meist komplett erlaubt
+                'm_spiel_u14': 3, 'm_spiel_u16': 3, 'm_spiel_u18': 3, 
+                'm_kino_u14': 2, 'm_kino_u16': 2, 'm_kino_u18': 2, 
+                'm_medien_u14': 2, 'm_medien_u16': 2, 'm_medien_u18': 2 
+            };
+
+            document.getElementById('checkMatrixBtn').addEventListener('pointerdown', function(e) {
+                e.preventDefault();
+                let correctCount = 0;
+                let totalCount = Object.keys(correctMatrixAnswers).length;
+                let isComplete = true;
+
+                document.querySelectorAll('.traffic-light').forEach(el => {
+                    const id = el.getAttribute('data-id');
+                    const currentState = parseInt(el.getAttribute('data-state'));
+                    
+                    if(currentState === 0) isComplete = false;
+
+                    el.classList.remove('ring-4', 'ring-red-400', 'ring-green-400', 'animate-shake');
+                    
+                    const correctState = correctMatrixAnswers[id];
+                    // Toleranzgrenzen (damit Schüler bei Ausnahmen nicht verzweifeln)
+                    let isCorrect = (currentState === correctState) || 
+                                    (id.startsWith('m_disco_u1') && currentState === 2) || // Gelb (wegen Begleitung) bei u16 in Discos wird akzeptiert
+                                    (id === 'm_brauchtum_u18' && currentState === 2);      // Gelb wird bei Brauchtum u18 auch akzeptiert
+
+                    if(currentState !== 0) {
+                        if(isCorrect) {
+                            correctCount++;
+                            el.classList.add('ring-4', 'ring-green-400');
+                        } else {
+                            el.classList.add('ring-4', 'ring-red-400', 'animate-shake');
+                            // Entferne Wackeln nach Animation
+                            setTimeout(() => el.classList.remove('animate-shake'), 400);
+                        }
+                    }
+                });
+
+                const feedbackMsg = document.getElementById('matrixFeedback');
+                if(!isComplete) {
+                    feedbackMsg.innerHTML = `<span class="text-yellow-600 font-bold"><i class="fa-solid fa-circle-exclamation mr-1"></i> Bitte fülle erst alle Ampeln aus!</span>`;
+                } else if(correctCount === totalCount) {
+                    feedbackMsg.innerHTML = `<span class="text-green-600 font-bold"><i class="fa-solid fa-party-horn mr-1"></i> Perfekt! Alles richtig (${correctCount}/${totalCount})</span>`;
+                } else {
+                    feedbackMsg.innerHTML = `<span class="text-red-600 font-bold"><i class="fa-solid fa-xmark mr-1"></i> ${correctCount} von ${totalCount} richtig. Versuche es nochmal!</span>`;
+                }
+            });
+
+
+            // --- 3. TERM MATCHING (TAP-TO-MATCH) ---
+            let selectedTerm = null;
+            let selectedTermElement = null;
+
+            const terms = document.querySelectorAll('.term-item');
+            const dropZones = document.querySelectorAll('.drop-zone');
+
+            Object.keys(appData.terms).forEach(target => {
+                const termValue = appData.terms[target];
+                if (termValue) {
+                    const zone = document.querySelector(`.drop-zone[data-target="${target}"]`);
+                    const termEl = document.querySelector(`.term-item[data-term="${termValue}"]`);
+                    if (zone && termEl) {
+                        zone.innerHTML = '';
+                        zone.appendChild(termEl);
+                        zone.classList.remove('border-dashed', 'text-slate-400', 'bg-slate-50');
+                        zone.classList.add('bg-white', 'border-solid', 'border-blue-200', 'shadow-sm');
+                    }
+                }
+            });
+
+            terms.forEach(term => {
+                term.addEventListener('pointerdown', (e) => {
+                    e.stopPropagation();
+                    if (selectedTermElement) selectedTermElement.classList.remove('selected');
+                    
+                    selectedTerm = term.getAttribute('data-term');
+                    selectedTermElement = term;
+                    term.classList.add('selected');
+                    
+                    dropZones.forEach(dz => dz.classList.add('highlight'));
+                    if (navigator.vibrate) navigator.vibrate(50);
+                });
+            });
+
+            dropZones.forEach(zone => {
+                zone.addEventListener('pointerdown', () => {
+                    if (selectedTermElement) {
+                        zone.innerHTML = '';
+                        zone.appendChild(selectedTermElement);
+                        zone.classList.remove('border-dashed', 'text-slate-400', 'highlight', 'bg-slate-50');
+                        zone.classList.add('bg-white', 'border-solid', 'border-blue-200', 'shadow-sm');
+                        selectedTermElement.classList.remove('selected');
+                        
+                        appData.terms[zone.getAttribute('data-target')] = selectedTerm;
+                        saveData();
+
+                        selectedTerm = null;
+                        selectedTermElement = null;
+                        dropZones.forEach(dz => dz.classList.remove('highlight'));
+                    } else if (zone.children.length > 0) {
+                        const child = zone.children[0];
+                        document.getElementById('term-container').appendChild(child);
+                        zone.innerHTML = 'Hier ablegen';
+                        zone.classList.add('border-dashed', 'text-slate-400', 'bg-slate-50');
+                        zone.classList.remove('bg-white', 'border-solid', 'border-blue-200', 'shadow-sm');
+                        
+                        appData.terms[zone.getAttribute('data-target')] = null;
+                        saveData();
+                    }
+                });
+            });
+
+            document.addEventListener('pointerdown', () => {
+                if (selectedTermElement) {
+                    selectedTermElement.classList.remove('selected');
+                    selectedTerm = null;
+                    selectedTermElement = null;
+                    dropZones.forEach(dz => dz.classList.remove('highlight'));
+                }
+            });
+
+
+            // --- 4. TEXTAREAS & QUIZ ---
+            document.querySelectorAll('textarea.save-trigger').forEach(ta => {
+                if (appData.cases[ta.getAttribute('data-id')]) {
+                    ta.value = appData.cases[ta.getAttribute('data-id')];
+                }
+                ta.addEventListener('input', (e) => {
+                    appData.cases[e.target.getAttribute('data-id')] = e.target.value;
+                    saveData();
+                });
+            });
+
+            document.querySelectorAll('input[type="radio"].save-trigger').forEach(radio => {
+                const name = radio.getAttribute('name');
+                if (appData.quiz[name] === radio.value) radio.checked = true;
+                radio.addEventListener('change', (e) => {
+                    appData.quiz[name] = e.target.value;
+                    saveData();
+                });
+            });
+
+
+            // --- 5. PDF GENERATION LOGIC ---
+            document.getElementById('generatePdfBtn').addEventListener('click', () => {
+                const printContainer = document.getElementById('print-container');
+                const date = new Date().toLocaleDateString('de-DE');
+                
+                let printHtml = `
+                    <div style="margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 10px;">
+                        <h1 style="font-size: 24px; font-weight: bold; margin-bottom: 5px;">Notizen: Jugendschutzgesetz (JuSchG)</h1>
+                        <p style="color: #666;">Erstellt am: ${date}</p>
+                    </div>
+                `;
+
+                printHtml += `<h2 style="font-size: 18px; font-weight: bold; margin-top: 30px; border-bottom: 1px solid #ccc;">1. Ampel-Matrix Auswertung</h2>`;
+                printHtml += `<table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 30px; margin-top: 15px;">
+                    <thead><tr>
+                        <th style="border: 1px solid #ccc; padding: 8px; text-align: left;">Situation</th>
+                        <th style="border: 1px solid #ccc; padding: 8px;">Unter 14</th>
+                        <th style="border: 1px solid #ccc; padding: 8px;">14-15 Jahre</th>
+                        <th style="border: 1px solid #ccc; padding: 8px;">16-17 Jahre</th>
+                    </tr></thead><tbody>`;
+                
+                matrixRows.forEach(row => {
+                    printHtml += `<tr><td style="border: 1px solid #ccc; padding: 8px;">${row.label}</td>`;['u14', 'u16', 'u18'].forEach(ageGroup => {
+                        const cellId = `${row.id}_${ageGroup}`;
+                        const stateValue = appData.matrix[cellId] || 0;
+                        const label = stateLabels[states[stateValue]];
+                        printHtml += `<td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${label}</td>`;
+                    });
+                    printHtml += `</tr>`;
+                });
+                printHtml += `</tbody></table><div class="page-break"></div>`;
+
+                printHtml += `<h2 style="font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #ccc;">2. Fallstudien</h2>`;
+                const cases =[
+                    {id: 'fall1', title: 'Fall 1: Der Elektromarkt'},
+                    {id: 'fall2', title: 'Fall 2: Pizza nach dem Training'},
+                    {id: 'fall3', title: 'Fall 3: Die Disconacht'}
+                ];
+
+                cases.forEach((c) => {
+                    const answer = appData.cases[c.id] || "Keine Notizen eingetragen.";
+                    const formattedAnswer = answer.replace(/\n/g, '<br>');
+                    printHtml += `
+                        <div style="margin-bottom: 25px;">
+                            <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">${c.title}</h3>
+                            <div style="background: #f9f9f9; padding: 15px; border: 1px solid #ccc; min-height: 80px; font-size: 14px;">
+                                ${formattedAnswer}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                printContainer.innerHTML = printHtml;
+                window.print();
+            });
+
+        });
+    </script>
+</body>
+</html>
